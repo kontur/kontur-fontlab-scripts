@@ -1,6 +1,9 @@
 # Diacritics generation script
 # Johannes 'kontur' Neumeier, 2015
 #
+# TODO implement generation for selected glyphs only
+# TODO implement dialog and possibility to retain component scale
+
 from robofab.world import CurrentFont
 from robofab.world import CurrentGlyph
 from robofab.interface.all.dialogs import *
@@ -388,7 +391,7 @@ messages = {
 	'start': 'Starting diacritics generation script',
 	'taskpicker': 'Select what to generate',
 	'notask': 'No option selected, exiting',
-	'end': 'Generation script'
+	'end': 'Generation script finished'
 }
 
 
@@ -428,6 +431,14 @@ def findCommonAnchor(glyph, accent):
 	else:
 		return False
 
+def createGlyphBackup(glyph):
+	font.insertGlyph(font[glyph].copy(), glyph + ".bak")
+	return True
+
+def deleteGlyphBackup(glyph):
+	font.removeGlyph(glyph + ".bak")
+	return True
+
 
 # script run start	
 #task = OneList(tasks, 'Select what to generate', 'Generate')
@@ -437,8 +448,11 @@ selectedTask = 0
 print ""
 print messages['start']
 
-ok = []
+created = []
+updated = []
+existingButUntouched = []
 failed = []
+missingUnicode = []
 
 if selectedTask is 0:
 	# this task generates all diacritics possible from available
@@ -447,14 +461,51 @@ if selectedTask is 0:
 
 	for glyph in diacritics:
 		accents = []
+		components = True
+		oldUnicode = 0
+
+		if glyph in font:
+			font[glyph].mark = 0
+			oldUnicode = font[glyph].unicode
+
 		for accent in diacritics[glyph][1]:
 			commonAnchor = findCommonAnchor(diacritics[glyph][0], accent)
 			if commonAnchor:
 				accents.append((accent, commonAnchor))
+			else:
+				print "No common anchor for glyph " + glyph + " and " + accent
+				components = False
+				break;
 
-		font.compileGlyph(glyph, diacritics[glyph][0], accents)
-		if len(font[glyph].components) < 2:
-			font.removeGlyph(glyph)
+		if components:
+			glyphExisted = False
+			if glyph in font:
+				glyphExisted = True
+				createGlyphBackup(glyph)
+				font.removeGlyph(glyph)
+
+			font.compileGlyph(glyph, diacritics[glyph][0], accents)
+			font[glyph].autoUnicodes()
+			if not font[glyph].unicode:
+				if oldUnicode:
+					font[glyph].unicode = oldUnicode
+				else:
+					missingUnicode.append(glyph)
+
+			deleteGlyphBackup(glyph)
+
+			if glyphExisted:
+				font[glyph].mark = 150
+				updated.append(glyph)
+			else:
+				font[glyph].mark = 50
+				created.append(glyph)
+		else:
+			if glyph in font:
+				existingButUntouched.append(glyph)
+			else:
+				failed.append(glyph)
+
 	font.update()
 
 elif selectedTask is 1:
@@ -497,10 +548,35 @@ elif selectedTask is 3:
 
 else:
 	print messages['notask']
+if len(created) > 0:
+	print "The following glyphs were newly created:"
+	print created
+if len(updated) > 0:
+	print "The following glyphs were updated:"
+	print updated
+if len(existingButUntouched) > 0:
+	print "The following glyphs were found in the font, but could not be generated. The old glyphs were left in the font as they were."
+	print existingButUntouched
+	print "Check that these glyphs have similar named anchors in all components and all components exists"
+if len(failed) > 0:
+	print "The following glyphs could not be generated:"
+	print failed
+	print "Check that these glyphs have similar named anchors in all components and all components exists"
 
-# print "ok"
-# print ok
-# print "failed"
-# print failed
+if len(missingUnicode) > 0:
+	print "---"
+	print "Failed to autogenerate unicodes for " + str(len(missingUnicode)) + " glyphs"
+	print "Please update manually where glyphs are highlighted in red with yellow label"
+
+print "---"
+print "New glyphs........." + str(len(created))
+print "Updated glyphs....." + str(len(updated))
+print "Unaffected glyphs.." + str(len(existingButUntouched)) + " (these existed in the font but could not be regenerated due to missing components)"
+print "Failed glyphs......" + str(len(failed)) + " (not generated due to missing components)"
+print "---"
+print "Scroll above for more detailed information."
+if len(existingButUntouched) > 0 or len(failed) > 0:
+	print "Unaffected of failed glyphs might be OK depending on your font scope"
+
 print messages['end']
 # script run end
