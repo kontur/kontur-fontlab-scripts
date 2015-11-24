@@ -1,9 +1,19 @@
+#FLM: Generate diacritcs (options prompt)
+
 # Diacritics generation script
+#
 # Johannes 'kontur' Neumeier, 2015
+# <hello@johannesneumeier.com>
+#
+# Note: 
+#
+# Example: 
 #
 # TODO implement generation for selected glyphs only
 # TODO implement dialog and possibility to retain component scale
+# TODO solve how to implement multiple component diacritics
 
+from FL import *
 from robofab.world import CurrentFont
 from robofab.world import CurrentGlyph
 from robofab.interface.all.dialogs import *
@@ -403,14 +413,13 @@ tasks = [
 	'Regenerate existing diacritics',
 	''] #empty task will be returned when nothing is selected
 
+# list for retrieving which glyphs are selected in the Font window
+selected = []
 
 # helper functions for the heavy lifting
 def findCommonAnchor(glyph, accent):
 	glyphAnchors = []
 	accentAnchors = []
-
-	print glyph
-	print accent
 
 	if font.has_key(glyph):
 		for anchor in font[glyph].anchors:
@@ -439,52 +448,68 @@ def deleteGlyphBackup(glyph):
 	font.removeGlyph(glyph + ".bak")
 	return True
 
+# retrieve all selected glyphs
+def getSelected(font, glyph, gindex):
+	selected.append(glyph.name)
 
-# script run start	
-#task = OneList(tasks, 'Select what to generate', 'Generate')
-#selectedTask = tasks.index(task)
-selectedTask = 0
+def getAllGlyphs(font):
+	return map(lambda g: g.name, font.glyphs)
 
-print ""
-print messages['start']
-
-created = []
-updated = []
-existingButUntouched = []
-failed = []
-missingUnicode = []
-
-if selectedTask is 0:
-	# this task generates all diacritics possible from available
-	# base and accent combinations, as found in variable "diacritics"
-	print tasks[0]
-
+def generateDiacritics(createNew, overwrite, glyphList=False):
 	for glyph in diacritics:
 		accents = []
 		components = True
 		oldUnicode = 0
+		
+		fontGlyphs = getAllGlyphs(font) # all glyphs in font as list of strings
 
-		if glyph in font:
+		if glyphList is False:
+			glyphList = getAllGlyphs(font)
+
+
+		# should the list of update glyphs ever be the same
+		# as the list of glyphs to update we are done
+		# TODO this is also the case if update + failed is the
+		# same but that's a more tricky case
+		if len(updated) is len(glyphList):
+			break;
+
+		# skip this loop if the diacritic sign is not in the list
+		# of to do glyphs at all
+		if not glyph in glyphList:
+			continue;
+
+		# save for convenience and performance
+		glyphExists = glyph in fontGlyphs
+
+		# skip this loop if we aren't overwriting but the glyph exists
+		if not overwrite and glyphExists:
+			continue;
+
+		# for overwriting store some stuff
+		if overwrite and glyphExists:
 			font[glyph].mark = 0
 			oldUnicode = font[glyph].unicode
 
+		# start by figuring out if all required component glyphs
+		# exists
 		for accent in diacritics[glyph][1]:
 			commonAnchor = findCommonAnchor(diacritics[glyph][0], accent)
 			if commonAnchor:
 				accents.append((accent, commonAnchor))
 			else:
-				print "No common anchor for glyph " + glyph + " and " + accent
+				print "No common anchor for glyphs " + glyph + " and " + accent
 				components = False
 				break;
 
 		if components:
-			glyphExisted = False
-			if glyph in font:
-				glyphExisted = True
+			# if components available and we overwrite, back up
+			if overwrite and glyph in glyphList:
 				createGlyphBackup(glyph)
 				font.removeGlyph(glyph)
 
 			font.compileGlyph(glyph, diacritics[glyph][0], accents)
+
 			font[glyph].autoUnicodes()
 			if not font[glyph].unicode:
 				if oldUnicode:
@@ -494,7 +519,7 @@ if selectedTask is 0:
 
 			deleteGlyphBackup(glyph)
 
-			if glyphExisted:
+			if glyphExists:
 				font[glyph].mark = 150
 				updated.append(glyph)
 			else:
@@ -508,60 +533,65 @@ if selectedTask is 0:
 
 	font.update()
 
+# script run start	
+task = OneList(tasks, 'Select what to generate', 'Generate')
+selectedTask = tasks.index(task)
+
+
+print ""
+print messages['start']
+
+created = []
+updated = []
+existingButUntouched = []
+failed = []
+missingUnicode = []
+
+#def generateDiacritics(createNew, overwrite, glyphs):
+if selectedTask is 0:
+	# this task generates all diacritics possible from available
+	# base and accent combinations, as found in variable "diacritics"
+	print tasks[0]
+	generateDiacritics(True, True)
+
 elif selectedTask is 1:
 	# this task generates all diacritics possible which are not yet
 	# existing glyphs in the font
 	print tasks[1]
-
-	for glyph in diacritics:
-		if glyph in font:
-			print "skip existing"
-		else:
-			accents = []
-			for accent in diacritics[glyph][1]:
-				commonAnchor = findCommonAnchor(diacritics[glyph][0], accent)
-				if commonAnchor:
-					accents.append((accent, commonAnchor))
-
-			font.compileGlyph(glyph, diacritics[glyph][0], accents)
-	font.update()
+	generateDiacritics(True, False)
 
 elif selectedTask is 2:
 	# this tasks (re-)generates all selected diacritic glyphs
 	print tasks[2]
+	fl.ForSelected(getSelected)
+	generateDiacritics(False, True, selected)
 
 elif selectedTask is 3:
 	# this tasks regenerates (overwrites) those diacritic glyphs 
 	# that are already in the font
 	print tasks[3]
-
-	for glyph in diacritics:
-		if glyph in font:
-			accents = []
-			for accent in diacritics[glyph][1]:
-				commonAnchor = findCommonAnchor(diacritics[glyph][0], accent)
-				if commonAnchor:
-					accents.append((accent, commonAnchor))
-
-			font.compileGlyph(glyph, diacritics[glyph][0], accents)
-	font.update()
+	generateDiacritics(False, True)
 
 else:
 	print messages['notask']
 if len(created) > 0:
+	print ""
 	print "The following glyphs were newly created:"
 	print created
 if len(updated) > 0:
+	print ""
 	print "The following glyphs were updated:"
 	print updated
 if len(existingButUntouched) > 0:
+	print ""
 	print "The following glyphs were found in the font, but could not be generated. The old glyphs were left in the font as they were."
 	print existingButUntouched
-	print "Check that these glyphs have similar named anchors in all components and all components exists"
+	print "Check that these glyphs have similar named anchors in all components and all components exist"
 if len(failed) > 0:
+	print ""
 	print "The following glyphs could not be generated:"
 	print failed
-	print "Check that these glyphs have similar named anchors in all components and all components exists"
+	print "Check that these glyphs have similar named anchors in all components and all components exist"
 
 if len(missingUnicode) > 0:
 	print "---"
