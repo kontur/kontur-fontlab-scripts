@@ -5,11 +5,6 @@
 # Johannes 'kontur' Neumeier, 2015
 # <hello@johannesneumeier.com>
 #
-# Note: 
-#
-# Example: 
-#
-# TODO implement generation for selected glyphs only
 # TODO implement dialog and possibility to retain component scale
 # TODO solve how to implement multiple component diacritics
 
